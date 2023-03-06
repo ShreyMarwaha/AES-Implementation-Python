@@ -33,18 +33,14 @@ class AES:
     #     else:
     #         return binascii.unhexlify(text).decode()
 
-    def convertToMatrix(self, text):
+    def convertToMatrix(self, text: str):
         """plaintext ascii string to 4x4 matrix column wise as byte. Padding with null bytes if needed"""
         matrix = [[b"\0" for i in range(4)] for j in range(4)]
         for i in range(min(16, len(text))):
             matrix[i % 4][i // 4] = text[i].encode("utf-8")
         return matrix
 
-    def convertToByteArray(self, text):
-        """converts ascii string to bytearray"""
-        return bytearray(text, "utf-8")
-
-    def key_expansion(self, key):
+    def key_expansion(key: bytearray):
         """Expands the 16-byte key into the 176-byte key schedule for AES-128."""
         # The first 16 bytes of the key schedule are the key itself
         key_schedule = key[:]
@@ -53,29 +49,22 @@ class AES:
         for i in range(1, 11):
             # The first 4 bytes of the round key are the last 4 bytes of the previous round key
             # rotated left by one byte and then substituted with the S-box.
-            x1 = self.rotate_left_by(key_schedule[-4:], 1)
-            debugByteArray(x1, "x1")
-
-            x2 = self.sub_bytes(x1)
-            debug(x2, "x2")
-
-            # without rcon
-            # x3 = [x2[0] ^ key_schedule[-16], x2[1] ^ key_schedule[-15], x2[2] ^ key_schedule[-14], x2[3] ^ key_schedule[-13]]
-
-            exit(0)
-
             # The last 12 bytes of the round key are the previous 12 bytes XORed with the first 12 bytes
             # of the previous round key.
-            key_schedule += [
-                key_schedule[-16] ^ key_schedule[-12],
-                key_schedule[-15] ^ key_schedule[-11],
-                key_schedule[-14] ^ key_schedule[-10],
-                key_schedule[-13] ^ key_schedule[-9],
-                key_schedule[-8] ^ key_schedule[-4],
-                key_schedule[-7] ^ key_schedule[-3],
-                key_schedule[-6] ^ key_schedule[-2],
-                key_schedule[-5] ^ key_schedule[-1],
-            ]
+            round_key = key_schedule[-4:]
+            round_key = bytearray([constants.S_BOX[b] for b in round_key])
+            round_key[0] ^= constants.R_CON[i]
+
+            for j in range(1, 4):
+                round_key[j] ^= round_key[j - 1]
+
+            key_schedule += round_key
+
+            for j in range(3):
+                round_key = key_schedule[-4:]
+                for k in range(4):
+                    round_key[k] ^= key_schedule[-16 + k]
+                key_schedule += round_key
 
         return key_schedule
 
@@ -84,17 +73,17 @@ class AES:
         return arr[offset:] + arr[:offset]
 
     def sub_bytes(self, arr):
-        """Substitutes each byte in the state with the corresponding byte in the S-box."""
-        return [constants.S_BOX[b] for b in arr]
+        """Substitutes each byte in the state with the corresponding byte in the S-box. Outpu as bytearray"""
+        return bytearray([constants.S_BOX[b] for b in arr])
 
-    def encrypt(self, plaintext):
+    def encrypt(self, plaintext: str):
         # if len(plaintext) != 16:
         #     raise ValueError("Plaintext must be 16 bytes long")
 
         self.plain_state = self.convertToMatrix(plaintext)
         debug(self.plain_state, "plain_state")
 
-        self.key_byte_arr = self.convertToByteArray(self.key)
+        self.key_byte_arr = bytearray(self.key, "utf-8")
         debugByteArray(self.key_byte_arr, "key_byte_arr")
 
         self.key_schedule = self.key_expansion(self.key_byte_arr)
