@@ -1,45 +1,63 @@
-import binascii
-
-plaintext = "Two One Nine Two"  # 16 bytes, 128 bits
-key = "Thats my Kung Fu"  # 16 bytes, 128 bits
-# key = "2b7e151628aed2a6abf7158809cf4f3c"
-DEBUG = False
+DEBUG = True
+f = open("debug.txt", "w")
 
 
-def debug(param, paramname):
+############################################################################
+########################### HELPER FUNCTIONS ###############################
+############################################################################
+def debug(paramName, paramValue):
     if DEBUG:
-        print(paramname, ":", param)
+        f.write(f"{paramName}: {paramValue}\n")
 
 
-def debugByteArray(byte_arr, arr_name):
-    if DEBUG:
-        print(arr_name, end=": ")
-        for byte in byte_arr:
-            print(chr(byte), end="")
-        print()
+def hex_xor(a: str, b: str) -> str:
+    """XOR two hexadecimal characters.
 
+    Args:
+        a (hex)
+        b (hex)
 
-def hex_xor(a, b):
-    """
-    XOR two hexadecimal characters and return result as a two-character hexadecimal string.
+    Returns:
+        hexadecimal character
     """
     # Convert hexadecimal characters to integers
-    a_int = int(a, 16)
-    b_int = int(b, 16)
+    a_int, b_int = int(a, 16), int(b, 16)
 
     # Perform XOR operation
     result_int = a_int ^ b_int
 
     # Convert result back to hexadecimal string
     result_hex = hex(result_int)[2:].zfill(2)
-
     return result_hex
 
 
-def char_to_hex(ch):
+def char_to_hex(ch: str):
     hex_val = hex(ord(ch))[2:]
     return hex_val
 
+
+def print_all_words(key_schedule):
+    if DEBUG:
+        for i in range(0, 44):
+            to_debug = f"Word {i}: "
+            for j in range(4):
+                to_debug += f"{key_schedule[i * 4 + j]} "
+            f.write(to_debug + "\n")
+
+
+def column_major_to_1d(matrix):
+    return [matrix[row][col] for col in range(4) for row in range(4)]
+
+
+def hex_to_chr(hex_val):
+    decimal_val = int(hex_val, 16)
+    ascii_char = chr(decimal_val)
+    return ascii_char
+
+
+############################################################################
+############################## CONSTANTS ###################################
+############################################################################
 
 # fmt: off
 S_BOX = [
@@ -82,49 +100,45 @@ RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
 # fmt: on
 
 
+############################################################################
+############################# AES CLASS ####################################
+############################################################################
 class AES:
     def __init__(self, key):
         if len(key) != 16:
             raise ValueError("Key must be 16 bytes long")
         self.key = key
 
-    def encrypt(self, plaintext: str):
+    def encrypt(self, plaintext: str) -> list[str]:
+        # Pad with spaces to make it a multiple of 16 bytes
+        if len(plaintext) % 16 != 0:
+            plaintext = plaintext + " " * (16 - len(plaintext) % 16)
+
         self.plain_state = self.convertToMatrix(plaintext)
+        debug("Initial plain_state", self.plain_state)
 
         self.key_matrix = self.convertToHexList(self.key)
-
         self.key_schedule = self.key_expansion(self.key_matrix)
-        for i in range(0, 44):
-            print("Word", i, ":", end=" ")
-            for j in range(4):
-                print(self.key_schedule[i * 4 + j], end=" ")
-            print()
-        # debugByteArray(self.key_schedule, "key_schedule")
+
+        print_all_words(self.key_schedule)
 
         # Add the first round key to the state before starting the rounds.
-        print("intiial planetext state:", self.plain_state)
         self.add_round_key(0)
-        print("state after 0:", self.plain_state)
+        debug("state after 0", self.plain_state)
 
-        # There are 10 rounds.
-        # The first 9 rounds are identical.
-        # These 9 rounds are executed in the loop below
+        # Out of 10 rounds, first 9 are indetical
         for i in range(1, 10):
             self.sub_bytes_plain_state()
-            # print(f"state after {i} sub:", self.plain_state)
             self.shift_rows()
-            # print(f"state after {i} shift:", self.plain_state)
             self.mix_column_using_precomputed_values()
-            print(f"state after {i} mix:", self.plain_state)
             self.add_round_key(i)
-            print(f"state after {i}:", self.plain_state, end="\n\n")
+            debug(f"state after {i}", self.plain_state)
 
-        # The last round is given below.
-        # The MixColumns function is not here in the last round.
+        # The MixColumns function is not present in the last round.
         self.sub_bytes_plain_state()
         self.shift_rows()
         self.add_round_key(10)
-        print("state after 10:", self.plain_state)
+        debug("state after 10", self.plain_state)
 
         return self.plain_state
 
@@ -179,7 +193,6 @@ class AES:
                     new_bytes.extend(substituted_bytes)
 
                 else:
-                    debug(key_schedule, "key_schedule")
                     # XOR the corresponding bytes of the previous round key and the new bytes
                     start, end = -16 + j * 4, -12 + j * 4
                     if end != 0:
@@ -190,8 +203,6 @@ class AES:
                     new_bytes.extend(
                         [hex_xor(a, b) for a, b in zip(old_bytes, new_bytes[-4:])]
                     )
-
-                debug(new_bytes, "new_bytes")
 
             key_schedule += new_bytes
         return key_schedule
@@ -219,7 +230,7 @@ class AES:
         """Adds the round key to the state. plain_state is 4x4 hex"""
         start, end = round * 16, (round + 1) * 16
         round_key = self.key_schedule[start:end]
-        print(f"Round Key {round}: {round_key}")
+        debug(f"Round Key {round}", round_key)
         for i in range(4):
             for j in range(4):
                 self.plain_state[i][j] = hex_xor(
@@ -263,106 +274,26 @@ class AES:
             b >>= 1
         return p
 
-    def mix_columns(self):
-        """Mixes the columns of the state."""
-        for i in range(4):
-            # The method below puts the product of {02} and the column in temp.
-            t = self.xtime(int(self.plain_state[i][0], 16))
-            # Then it is XORed with the column with an offset of 1.
-            # This is all done modulo {1b}.
-            self.plain_state[i][0] = hex(
-                (
-                    int(self.plain_state[i][0], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][1], 16))
-                    ^ int(self.plain_state[i][1], 16)
-                )
-                % 256
-            )[2:].zfill(2)
-            self.plain_state[i][1] = hex(
-                (
-                    int(self.plain_state[i][1], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][2], 16))
-                    ^ int(self.plain_state[i][2], 16)
-                )
-                % 256
-            )[2:].zfill(2)
-
-            self.plain_state[i][2] = hex(
-                (
-                    int(self.plain_state[i][2], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][3], 16))
-                    ^ int(self.plain_state[i][3], 16)
-                )
-                % 256
-            )[2:].zfill(2)
-
-            self.plain_state[i][3] = hex(
-                (
-                    int(self.plain_state[i][3], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][0], 16))
-                    ^ int(self.plain_state[i][0], 16)
-                )
-                % 256
-            )[2:].zfill(2)
-
-    # def mix_columns(self):
-    #     """Mixes the columns of the state."""
-    #     for i in range(4):
-    #         # The method below puts the product of {02} and the column in temp.
-    #         t = self.xtime(self.plain_state[i][0])
-    #         # Then it is XORed with the column with an offset of 1.
-    #         # This is all done modulo {1b}.
-    #         self.plain_state[i][0] = (
-    #             self.plain_state[i][0]
-    #             ^ t
-    #             ^ self.xtime(self.plain_state[i][1])
-    #             ^ self.plain_state[i][1]
-    #         ) % 256
-    #         self.plain_state[i][1] = (
-    #             self.plain_state[i][1]
-    #             ^ t
-    #             ^ self.xtime(self.plain_state[i][2])
-    #             ^ self.plain_state[i][2]
-    #         ) % 256
-    #         self.plain_state[i][2] = (
-    #             self.plain_state[i][2]
-    #             ^ t
-    #             ^ self.xtime(self.plain_state[i][3])
-    #             ^ self.plain_state[i][3]
-    #         ) % 256
-
-    #         self.plain_state[i][3] = (
-    #             self.plain_state[i][3]
-    #             ^ t
-    #             ^ self.xtime(self.plain_state[i][0])
-    #             ^ self.plain_state[i][0]
-    #         ) % 256
-
-    def xtime(self, byte):
-        """Multiplies {02} with the argument in GF(2^8)"""
-        return (byte << 1) ^ (0x1B & -(byte >> 7))
-
     def decrypt(self, ciphertext):
         """Decrypts the ciphertext with the key"""
         self.plain_state = ciphertext
-        print("state after 10:", self.plain_state)
+        debug("state after 10", self.plain_state)
+
         self.add_round_key(10)
         self.inv_shift_rows()
         self.inv_sub_bytes()
-        print("state after 9:", self.plain_state)
+        debug("state after 9", self.plain_state)
 
         for i in range(9, 0, -1):
             self.add_round_key(i)
             self.inv_mix_columns_with_precom()
             self.inv_shift_rows()
             self.inv_sub_bytes()
-            print(f"state after {i-1}:", self.plain_state)
+            debug(f"state after {i-1}:", self.plain_state)
+
         self.add_round_key(0)
-        print("state before 0:", self.plain_state)
+        debug("Intial Plain State", self.plain_state)
+
         return self.plain_state
 
     def inv_shift_rows(self):
@@ -404,69 +335,33 @@ class AES:
                 result[i][j] = hex(sum % 256)[2:].zfill(2)
         self.plain_state = result
 
-    # def inv_mix_columns(self):
-    #     """Mixes the columns of the state."""
-    #     for i in range(4):
-    #         # The method below puts the product of {02} and the column in temp.
-    #         t = self.xtime(int(self.plain_state[i][0], 16))
-    #         # Then it is XORed with the column with an offset of 1.
-    #         # This is all done modulo {1b}.
-    #         self.plain_state[i][0] = hex(
-    #             (
-    #                 int(self.plain_state[i][0], 16)
-    #                 ^ t
-    #                 ^ self.xtime(int(self.plain_state[i][1], 16))
-    #                 ^ int(self.plain_state[i][1], 16)
-    #             )
-    #             % 256
-    #         )[2:].zfill(2)
-    #         self.plain_state[i][1] = hex(
-    #             (
-    #                 int(self.plain_state[i][1], 16)
-    #                 ^ t
-    #                 ^ self.xtime(int(self.plain_state[i][2], 16))
-    #                 ^ int(self.plain_state[i][2], 16)
-    #             )
-    #             % 256
-    #         )[2:].zfill(2)
 
-    #         self.plain_state[i][2] = hex(
-    #             (
-    #                 int(self.plain_state[i][2], 16)
-    #                 ^ t
-    #                 ^ self.xtime(int(self.plain_state[i][3], 16))
-    #                 ^ int(self.plain_state[i][3], 16)
-    #             )
-    #             % 256
-    #         )[2:].zfill(2)
-
-    #         self.plain_state[i][3] = hex(
-    #             (
-    #                 int(self.plain_state[i][3], 16)
-    #                 ^ t
-    #                 ^ self.xtime(int(self.plain_state[i][0], 16))
-    #                 ^ int(self.plain_state[i][0], 16)
-    #             )
-    #             % 256
-    #         )[2:].zfill(2)
-
-
-def column_major_to_1d(matrix):
-    return [matrix[row][col] for col in range(4) for row in range(4)]
-
-
-def hex_to_chr(hex_val):
-    decimal_val = int(hex_val, 16)
-    ascii_char = chr(decimal_val)
-    return ascii_char
+class plaintext_key_pair:
+    def __init__(self, plaintext, key):
+        self.plaintext = plaintext
+        self.key = key
 
 
 if __name__ == "__main__":
-    aes = AES(key)
-    ciphertext = aes.encrypt(plaintext)
+    # [Plaintext, Key]
+    plaintext_key_pairs = [
+        plaintext_key_pair("Two One Nine Two", "Thats my Kung Fu"),
+        plaintext_key_pair("Need Padding", "aBcDeFgHiJkLmNoP"),
+        plaintext_key_pair("aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"),
+    ]
 
-    print("\n\n\nciphertext:", column_major_to_1d(ciphertext), end="\n\n\n")
+    for i, pair in enumerate(plaintext_key_pairs):
+        print(f"---------- Test Case {i} ----------")
+        print("Plaintext: ", pair.plaintext)
+        print("Key:", pair.key)
+        aes = AES(pair.key)
 
-    plaintext = aes.decrypt(ciphertext)
-    for i in column_major_to_1d(plaintext):
-        print(hex_to_chr(i), end="")
+        ciphertext = aes.encrypt(pair.plaintext)
+        print("ciphertext:", column_major_to_1d(ciphertext))
+
+        decrypted_plaintext = aes.decrypt(ciphertext)
+        print("Decrypted plaintext:", end=" ")
+        for i in column_major_to_1d(decrypted_plaintext):
+            print(hex_to_chr(i), end="")
+        print("\n")
+    f.close()
