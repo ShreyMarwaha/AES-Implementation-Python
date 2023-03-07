@@ -387,69 +387,78 @@ class AES:
             [0x0B, 0x0D, 0x09, 0x0E],
         ]
         result = [[0 for i in range(4)] for j in range(4)]
-        # iterating by row of A
 
+        # iterating by row of A
         for i in range(4):
             # iterating by col of B
             for j in range(4):
-                # iterating by row of b
                 sum = 0
+                # iterating by row of b
                 for k in range(4):
-                    sum += int(INV_MIX_COLUMNS_MATRIX[i][k]) * int(
-                        self.plain_state[k][j], 16
+                    mult = self.GF_mult(
+                        int(INV_MIX_COLUMNS_MATRIX[i][k]),
+                        int(self.plain_state[k][j], 16),
                     )
+                    # In GF(2^8), addition is the same as XOR
+                    sum ^= mult
                 result[i][j] = hex(sum % 256)[2:].zfill(2)
         self.plain_state = result
 
-    def inv_mix_columns(self):
-        """Mixes the columns of the state."""
-        for i in range(4):
-            # The method below puts the product of {02} and the column in temp.
-            t = self.xtime(int(self.plain_state[i][0], 16))
-            # Then it is XORed with the column with an offset of 1.
-            # This is all done modulo {1b}.
-            self.plain_state[i][0] = hex(
-                (
-                    int(self.plain_state[i][0], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][1], 16))
-                    ^ int(self.plain_state[i][1], 16)
-                )
-                % 256
-            )[2:].zfill(2)
-            self.plain_state[i][1] = hex(
-                (
-                    int(self.plain_state[i][1], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][2], 16))
-                    ^ int(self.plain_state[i][2], 16)
-                )
-                % 256
-            )[2:].zfill(2)
+    # def inv_mix_columns(self):
+    #     """Mixes the columns of the state."""
+    #     for i in range(4):
+    #         # The method below puts the product of {02} and the column in temp.
+    #         t = self.xtime(int(self.plain_state[i][0], 16))
+    #         # Then it is XORed with the column with an offset of 1.
+    #         # This is all done modulo {1b}.
+    #         self.plain_state[i][0] = hex(
+    #             (
+    #                 int(self.plain_state[i][0], 16)
+    #                 ^ t
+    #                 ^ self.xtime(int(self.plain_state[i][1], 16))
+    #                 ^ int(self.plain_state[i][1], 16)
+    #             )
+    #             % 256
+    #         )[2:].zfill(2)
+    #         self.plain_state[i][1] = hex(
+    #             (
+    #                 int(self.plain_state[i][1], 16)
+    #                 ^ t
+    #                 ^ self.xtime(int(self.plain_state[i][2], 16))
+    #                 ^ int(self.plain_state[i][2], 16)
+    #             )
+    #             % 256
+    #         )[2:].zfill(2)
 
-            self.plain_state[i][2] = hex(
-                (
-                    int(self.plain_state[i][2], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][3], 16))
-                    ^ int(self.plain_state[i][3], 16)
-                )
-                % 256
-            )[2:].zfill(2)
+    #         self.plain_state[i][2] = hex(
+    #             (
+    #                 int(self.plain_state[i][2], 16)
+    #                 ^ t
+    #                 ^ self.xtime(int(self.plain_state[i][3], 16))
+    #                 ^ int(self.plain_state[i][3], 16)
+    #             )
+    #             % 256
+    #         )[2:].zfill(2)
 
-            self.plain_state[i][3] = hex(
-                (
-                    int(self.plain_state[i][3], 16)
-                    ^ t
-                    ^ self.xtime(int(self.plain_state[i][0], 16))
-                    ^ int(self.plain_state[i][0], 16)
-                )
-                % 256
-            )[2:].zfill(2)
+    #         self.plain_state[i][3] = hex(
+    #             (
+    #                 int(self.plain_state[i][3], 16)
+    #                 ^ t
+    #                 ^ self.xtime(int(self.plain_state[i][0], 16))
+    #                 ^ int(self.plain_state[i][0], 16)
+    #             )
+    #             % 256
+    #         )[2:].zfill(2)
 
 
 def column_major_to_1d(matrix):
     return [matrix[row][col] for col in range(4) for row in range(4)]
+
+
+def hex_to_chr(hex_val):
+    decimal_val = int(hex_val, 16)
+    ascii_char = chr(decimal_val)
+    return ascii_char
 
 
 if __name__ == "__main__":
@@ -459,4 +468,5 @@ if __name__ == "__main__":
     print("\n\n\nciphertext:", column_major_to_1d(ciphertext), end="\n\n\n")
 
     plaintext = aes.decrypt(ciphertext)
-    print(plaintext)
+    for i in column_major_to_1d(plaintext):
+        print(hex_to_chr(i), end="")
