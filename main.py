@@ -1,5 +1,9 @@
+import copy
+
 DEBUG = True
 f = open("debug.txt", "w")
+
+enc_1, dec_9, enc_9, dec_1 = None, None, None, None
 
 
 ############################################################################
@@ -110,6 +114,7 @@ class AES:
         self.key = key
 
     def encrypt(self, plaintext: str) -> list[str]:
+        global enc_1, enc_9
         # Pad with spaces to make it a multiple of 16 bytes
         if len(plaintext) % 16 != 0:
             plaintext = plaintext + " " * (16 - len(plaintext) % 16)
@@ -132,7 +137,13 @@ class AES:
             self.shift_rows()
             self.mix_column_using_precomputed_values()
             self.add_round_key(i)
+            if i == 1:
+                # print("enc_1", self.plain_state)
+                enc_1 = copy.deepcopy(self.plain_state)
             debug(f"state after {i}", self.plain_state)
+
+        enc_9 = copy.deepcopy(self.plain_state)
+        # print("enc_9", self.plain_state)
 
         # The MixColumns function is not present in the last round.
         self.sub_bytes_plain_state()
@@ -276,21 +287,28 @@ class AES:
 
     def decrypt(self, ciphertext):
         """Decrypts the ciphertext with the key"""
+        global dec_1, dec_9
         self.plain_state = ciphertext
         debug("state after 10", self.plain_state)
 
         self.add_round_key(10)
-        self.inv_shift_rows()
-        self.inv_sub_bytes()
+
         debug("state after 9", self.plain_state)
 
         for i in range(9, 0, -1):
-            self.add_round_key(i)
-            self.inv_mix_columns_with_precom()
             self.inv_shift_rows()
             self.inv_sub_bytes()
+            if i == 9:
+                dec_1 = copy.deepcopy(self.plain_state)
+            elif i == 1:
+                dec_9 = copy.deepcopy(self.plain_state)
+
+            self.add_round_key(i)
+            self.inv_mix_columns_with_precom()
             debug(f"state after {i-1}:", self.plain_state)
 
+        self.inv_shift_rows()
+        self.inv_sub_bytes()
         self.add_round_key(0)
         debug("Intial Plain State", self.plain_state)
 
@@ -355,13 +373,23 @@ if __name__ == "__main__":
         print("Plaintext: ", pair.plaintext)
         print("Key:", pair.key)
         aes = AES(pair.key)
-
         ciphertext = aes.encrypt(pair.plaintext)
         print("ciphertext:", column_major_to_1d(ciphertext))
 
         decrypted_plaintext = aes.decrypt(ciphertext)
+
         print("Decrypted plaintext:", end=" ")
         for i in column_major_to_1d(decrypted_plaintext):
             print(hex_to_chr(i), end="")
         print("\n")
+
+        print("dec_1", dec_1)
+        print("enc_9", enc_9)
+        print(f"Is Dec_1 == Enc_9?  >>{enc_9 == dec_1}")
+        print()
+        print("dec_9", dec_9)
+        print("enc_1", enc_1)
+        print(f"Is Dec_9 == Enc_1?  >>{enc_1 == dec_9}")
+        print("\n\n")
+        # exit(0)
     f.close()
